@@ -403,7 +403,7 @@ Chacun doit produire le verdict de repli et un enregistrement de journal.
 
 | Réf | Risque | Traitement |
 |---|---|---|
-| R1 | Toute commande Bash part vers un tiers. En contexte professionnel, les commandes contiennent des noms d'hôtes, de projets et de bases internes. | Décision consciente à assumer. `JEV_GUARD_DISABLE` permet une coupure par projet. À arbitrer avant tout usage sur du code client. |
+| R1 | Toute commande Bash part vers un tiers. En contexte professionnel, les commandes contiennent des noms d'hôtes, de projets et de bases internes. | **Arbitré le 2026-09-18 : accepté dans le cadre d'un POC.** Le périmètre d'usage est la validation technique, pas le code client. `JEV_GUARD_DISABLE` permet une coupure par projet. Un passage en usage courant sur du code client rouvrirait cet arbitrage. |
 | R2 | Le pré-filtre ne couvre que des formats de secrets connus. Un secret maison part vers Jev. | Périmètre assumé. Le jeu de motifs est extensible ; §7 documente le critère d'ajout. |
 | R3 | Une panne TypeSafe ramène silencieusement au comportement actuel. | Le taux de bascule est journalisé et fait partie des critères de phase B. |
 | R4 | Les seuils du §8.3 ne sont pas calibrés sur des données réelles. | C'est précisément l'objet de la phase A. Ils ne doivent pas être considérés comme validés avant. |
