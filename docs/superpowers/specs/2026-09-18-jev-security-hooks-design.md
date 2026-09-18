@@ -403,7 +403,7 @@ Chacun doit produire le verdict de repli et un enregistrement de journal.
 
 | Réf | Risque | Traitement |
 |---|---|---|
-| R1 | Toute commande Bash part vers un tiers. En contexte professionnel, les commandes contiennent des noms d'hôtes, de projets et de bases internes. | **Arbitré le 2026-09-18 : accepté dans le cadre d'un POC.** Le périmètre d'usage est la validation technique, pas le code client. `JEV_GUARD_DISABLE` permet une coupure par projet. Un passage en usage courant sur du code client rouvrirait cet arbitrage. |
+| R1 | Toute commande Bash part vers un tiers. En contexte professionnel, les commandes contiennent des noms d'hôtes, de projets et de bases internes. | **Arbitré le 2026-09-18 : accepté dans le cadre d'un POC.** Le périmètre d'usage est la validation technique, pas le code client. `JEV_GUARD_DISABLE` permet une coupure par projet. Un passage en usage courant sur du code client rouvrirait cet arbitrage. Levée structurelle attendue : un Jev à poids ouverts exécuté localement ferme ce risque au lieu de le contenir (§14). |
 | R2 | Le pré-filtre ne couvre que des formats de secrets connus. Un secret maison part vers Jev. | Périmètre assumé. Le jeu de motifs est extensible ; §7 documente le critère d'ajout. |
 | R3 | Une panne TypeSafe ramène silencieusement au comportement actuel. | Le taux de bascule est journalisé et fait partie des critères de phase B. |
 | R4 | Les seuils du §8.3 ne sont pas calibrés sur des données réelles. | C'est précisément l'objet de la phase A. Ils ne doivent pas être considérés comme validés avant. |
@@ -411,6 +411,25 @@ Chacun doit produire le verdict de repli et un enregistrement de journal.
 | R6 | Le journal pourrait contenir des secrets. | `cmd_redacted` passe par l'expurgation avant écriture, vérifié par test. |
 
 ## 14. Suites hors périmètre
+
+**Cadre de travail de cette liste.** Ce qu'on cherche ici, c'est identifier des
+cas d'usage pour ce type de modèle : décision typée, calibrée, à faible latence.
+La question de la sensibilité de la donnée n'est pas rouverte à chaque entrée de
+la liste ; elle est posée une fois pour toutes en R1 et reste une contrainte
+connue. Un nouveau cas d'usage n'a donc pas à re-plaider l'arbitrage, seulement à
+signaler en une ligne ce qu'il change au périmètre de données exposé, quand il le
+change (le routage de modèle du §14.1 le fait au point 3 : il voit tous les
+prompts, pas seulement des commandes shell).
+
+**Levée structurelle attendue.** Un Jev à poids ouverts, exécutable localement,
+supprimerait le problème à la racine plutôt que de le contenir : plus rien ne
+sort de la machine, R1 tombe, le pré-filtre du §7 redevient une précaution et non
+une nécessité, et le budget de latence se réduit à un appel local. Ce serait
+aussi un gain de performance de premier ordre sur les cas à fort volume de cette
+liste, où le coût par appel réseau est ce qui décide de la viabilité. Cette
+hypothèse conditionne l'ordre de priorité ci-dessous : les cas que l'exposition
+de données freine aujourd'hui deviendraient les plus rentables le jour où elle
+disparaît.
 
 Les autres cibles Jev identifiées lors de l'analyse, par ordre de retour attendu :
 compaction de contexte, skills à fort volume (`liza-logs`, `dpe-search`, `rech-immo`,
