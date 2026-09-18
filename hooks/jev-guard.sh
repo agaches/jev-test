@@ -62,7 +62,17 @@ emettre() {
           permissionDecisionReason: $r
         }}'
       exit 0 ;;
+    allow)
+      exit 0 ;;
     *)
+      # Verdict illisible (cache corrompu, decide_* muet...) : on demande
+      # confirmation plutôt que d'autoriser en silence.
+      jq -nc --arg r "verdict illisible ($verdict) : $raison" '{
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "ask",
+          permissionDecisionReason: $r
+        }}'
       exit 0 ;;
   esac
 }
@@ -116,10 +126,20 @@ fi
 # JEV_LAST_ERROR (spec §9). Un « REPONSE=$(jev_query ...) » ferait tourner la
 # fonction dans un sous-shell : cette variable ne remonterait jamais jusqu'ici.
 # On capture donc sa sortie standard par redirection vers un fichier
-# temporaire, en gardant l'appel dans le shell courant.
-JEV_SORTIE=$(mktemp)
+# temporaire, en gardant l'appel dans le shell courant. Le gabarit respecte
+# explicitement TMPDIR : un simple `mktemp` sans gabarit l'ignore sur
+# certains systèmes (macOS notamment).
+JEV_SORTIE=$(mktemp "${TMPDIR:-/tmp}/jev-guard.XXXXXX" 2>/dev/null) || JEV_SORTIE=""
+# Filet de sécurité : si le hook est tué (timeout) avant le `rm -f` normal,
+# ce fichier ne doit pas rester orphelin sur un chemin exécuté à chaque appel.
+[ -n "$JEV_SORTIE" ] && trap 'rm -f "$JEV_SORTIE"' EXIT
+
 REPONSE=""
-if jev_query "$PAYLOAD" >"$JEV_SORTIE" 2>/dev/null; then
+if [ -z "$JEV_SORTIE" ]; then
+  # mktemp a échoué (TMPDIR absent/plein/en lecture seule) : Jev n'a jamais
+  # pu être interrogé, mais la cause ne doit pas rester silencieuse.
+  JEV_LAST_ERROR=mktemp_echec
+elif jev_query "$PAYLOAD" >"$JEV_SORTIE" 2>/dev/null; then
   REPONSE=$(cat "$JEV_SORTIE")
 fi
 rm -f "$JEV_SORTIE"
@@ -136,10 +156,13 @@ if [ -n "$REPONSE" ]; then
   LATENCE=$(( $(_maintenant_ms) - DEBUT ))
   if [ "$OUTIL" = "Bash" ]; then
     VERDICT=$(decide_bash "$REPONSE")
-    CONF=$(jq -r '.answers.destructiveness.confidence // null' <<<"$REPONSE")
+    # `numbers` filtre tout ce qui n'est pas un nombre (ex. confidence:"high") :
+    # sans cela, --argjson refuserait la valeur et log_decision perdrait
+    # silencieusement toute la ligne (log.sh:42, `|| true`).
+    CONF=$(jq -r '(.answers.destructiveness.confidence | numbers) // null' <<<"$REPONSE")
   else
     VERDICT=$(decide_file "$REPONSE")
-    CONF=$(jq -r '.answers.sensitive_file.confidence // null' <<<"$REPONSE")
+    CONF=$(jq -r '(.answers.sensitive_file.confidence | numbers) // null' <<<"$REPONSE")
   fi
   SCORES=$(jq -c '.answers' <<<"$REPONSE")
   cache_put "$CLE" "$VERDICT" "$SCORES"
