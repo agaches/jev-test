@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Stub curl : HTTP 200, réponse structurellement valide mais sans réponse.
+printf '{"model":"jev-1.13.0","answers":{},"usage":{}}\n200'
