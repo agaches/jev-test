@@ -414,6 +414,51 @@ Chacun doit produire le verdict de repli et un enregistrement de journal.
 
 Les autres cibles Jev identifiées lors de l'analyse, par ordre de retour attendu :
 compaction de contexte, skills à fort volume (`liza-logs`, `dpe-search`, `rech-immo`,
-`document-organizer`), porte de compression flow-lean, triage de revue de code. Chacune
-fera l'objet d'une spec propre. La couche `lib/jev-client.sh` construite ici est prévue
-pour être réutilisée telle quelle.
+`document-organizer`), porte de compression flow-lean, triage de revue de code,
+routage de modèle (§14.1). Chacune fera l'objet d'une spec propre. La couche
+`lib/jev-client.sh` construite ici est prévue pour être réutilisée telle quelle.
+
+### 14.1 Routage de modèle — Jev en aiguilleur
+
+Ajouté le 2026-09-18. Non cadré, pas de spec à ce jour.
+
+**Idée.** Utiliser Jev comme routeur automatique en amont de l'appel au modèle :
+classer le prompt entrant, puis choisir le modèle et le budget de raisonnement
+adaptés plutôt que de servir le plus gros modèle à chaque tour. C'est la forme
+d'une brique type RouteLLM, avec la décision typée de Jev à la place d'un
+classifieur maison à entraîner.
+
+**Pourquoi Jev colle à ce problème.** Même forme que le hook de sécurité : un
+jugement contextuel sur une chaîne, une réponse dans un espace fini connu
+d'avance, une probabilité associée, et un budget de latence serré parce que la
+décision se prend avant chaque tour. Le seuillage resterait en code, jamais dans
+le modèle (D5).
+
+**Questions typées pressenties**, à confirmer au cadrage :
+
+| Question | Type | Rôle |
+|---|---|---|
+| `task_kind` | `choice` | `code`, `debug`, `analyse`, `rédaction`, `conversation`, `outillage` |
+| `reasoning_needed` | `score` | rubrique ordonnée : réponse directe → raisonnement long |
+| `context_breadth` | `choice` | fichier unique, module, dépôt entier |
+| `stakes` | `noul` | une erreur coûte-t-elle cher (production, données, argent) ? |
+
+La table de routage `(task_kind, reasoning_needed, stakes) → modèle + budget`
+reste en configuration, externalisée comme les seuils du §8.3 (risque R5).
+
+**Points durs à trancher au cadrage.**
+
+1. **Le routeur paie sa propre latence à chaque tour.** Le hook de sécurité peut
+   se cacher derrière un cache indexé par commande ; un prompt en langage naturel
+   se répète beaucoup moins. Le gain de coût doit couvrir l'appel de routage.
+2. **Un mauvais aiguillage vers le bas est silencieux.** Contrairement à un
+   blocage de sécurité, une réponse produite par un modèle sous-dimensionné ne
+   lève aucune alerte. Le déploiement en deux phases du §10 s'applique tel quel :
+   mode ombre d'abord, désaccords journalisés, bascule seulement sur données.
+3. **Le routeur voit tous les prompts**, donc le risque R1 est plus large ici
+   que pour les commandes Bash. Un pré-filtre analogue au §7 serait à repenser :
+   les motifs de valeurs de secrets ne suffisent pas à couvrir du texte libre.
+4. **Périmètre d'application à définir** : aiguillage entre modèles d'un même
+   fournisseur, ou entre fournisseurs. Le second cas rouvre l'arbitrage R1.
+
+Nom de code proposé par l'auteur, à ses risques : *JevFaitLeTraffic*.
