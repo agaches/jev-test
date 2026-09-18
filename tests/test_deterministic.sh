@@ -21,4 +21,12 @@ assert_eq allow "$(path_containment_verdict /opt/data/f.csv)" "zone supplémenta
 assert_eq allow "$(path_containment_verdict /srv/www/i.html)" "zone supplémentaire 2"
 assert_eq block "$(path_containment_verdict /opt/autre/f)"    "hors zone supplémentaire"
 
+export CLAUDE_PROJECT_DIR=/projet
+unset ALLOWED_PATHS
+assert_eq block "$(path_containment_verdict /projet/../../etc/hosts)"      "traversée hors projet"
+assert_eq allow "$(path_containment_verdict /projet/src/../lib/b.ts)"      "traversée interne au projet"
+assert_eq allow "$(path_containment_verdict /projet/./src/a.ts)"           "segment . redondant"
+assert_eq block "$(path_containment_verdict tmp/x)"                        "chemin relatif non rendu absolu"
+assert_eq block "$(path_containment_verdict "$HOME/.claude/../Documents/x")" "traversée hors ~/.claude"
+
 finish
