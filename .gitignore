@@ -1,0 +1,4 @@
+*.log
+.jev-guard-cache/
+tests/tmp/
+.superpowers/
