@@ -70,4 +70,10 @@ assert_eq allow "$(decide_bash "$(reponse 0 0.1 "" 1 1)")"     "portée vide san
 # Borne exacte de la règle 2
 assert_eq block "$(decide_bash "$(reponse 0 2.5 machine 1 1)")" "R2 à la borne exacte"
 
+# Document sans objet `answers` : escalade, jamais une autorisation
+assert_eq ask   "$(decide_bash 'null')"              "null nu → ask (bash)"
+assert_eq ask   "$(decide_file 'null')"              "null nu → ask (fichier)"
+assert_eq ask   "$(decide_bash '{"answers":null}')"  "answers null → ask"
+assert_eq ask   "$(decide_bash '{}')"                "document sans answers → ask"
+
 finish

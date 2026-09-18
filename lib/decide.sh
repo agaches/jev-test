@@ -17,6 +17,8 @@ decide_bash() {
   # Une portée présente mais illisible est ramenée à la plus large, pour que la
   # règle 2 continue de s'appliquer au lieu d'être contournée.
   champs=$(jq -er '
+    if type != "object" or (.answers | type) != "object"
+    then error("réponse sans objet answers") else . end |
     def nombre($defaut):
       if . == null then $defaut
       elif type == "number" then .
@@ -55,6 +57,8 @@ decide_file() {
 
   # Même extraction stricte que decide_bash : voir le commentaire là-haut.
   sensible=$(jq -er '
+    if type != "object" or (.answers | type) != "object"
+    then error("réponse sans objet answers") else . end |
     def nombre($defaut):
       if . == null then $defaut
       elif type == "number" then .
