@@ -1,0 +1,17 @@
+[extend]
+useDefault = true
+
+# Ce dépôt teste un détecteur de secrets : ses tests contiennent donc, par
+# nature, des valeurs ayant la forme de secrets. Elles sont toutes fabriquées à
+# entropie nulle (répétitions de A, 0 ou a) pour rester impossibles à confondre
+# avec un vrai secret, et l'allowlist ci-dessous ne reconnaît que ces formes
+# exactes. gitleaks reste armé partout ailleurs.
+[[allowlists]]
+description = "Fixtures de test à entropie nulle de jev-guard"
+regexTarget = "match"
+regexes = [
+  '''sk-proj-A{20,}''',
+  '''AKIA0{16}''',
+  '''ghp_0{36}''',
+  '''xoxb-0{12}-a{10}''',
+]
