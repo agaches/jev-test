@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Stub curl paramétrable : renvoie la réponse figée désignée par
+# JEV_FIXTURE_REPONSE. Ignore tous les arguments.
+cat "$JEV_FIXTURE_REPONSE"
+printf '\n200'
