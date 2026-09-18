@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Stub curl : quota dépassé.
+printf '{"error":"quota exceeded"}\n429'
