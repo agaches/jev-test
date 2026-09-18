@@ -52,4 +52,22 @@ assert_eq allow "$(decide_file '{"answers":{"sensitive_file":{"noul":0.20}}}')" 
 assert_eq ask "$(decide_bash 'pas du json')" "réponse illisible → ask (bash)"
 assert_eq ask "$(decide_file 'pas du json')" "réponse illisible → ask (fichier)"
 
+# Champ présent mais du mauvais type : escalade, jamais une autorisation
+assert_eq ask "$(decide_bash '{"answers":{"secret_exposure":"boom","destructiveness":{"score":0.1,"confidence":1},"blast_radius":{"choice":"cwd","confidence":1}}}')" \
+  "secret_exposure du mauvais type → ask"
+assert_eq ask "$(decide_bash "$(reponse 0 0.1 cwd 1 1 | jq -c '.answers.secret_exposure.noul = [0.9]')")" \
+  "noul en tableau → ask (bash)"
+assert_eq ask "$(decide_file '{"answers":{"sensitive_file":"boom"}}')" \
+  "sensitive_file du mauvais type → ask"
+assert_eq ask "$(decide_file '{"answers":{"sensitive_file":{"noul":[0.9]}}}')" \
+  "noul en tableau → ask (fichier)"
+
+# Portée présente mais illisible : ramenée à la plus large, la règle 2 tient
+assert_eq block "$(decide_bash "$(reponse 0 3.0 "" 1 1)")"     "portée vide → règle 2 s'applique"
+assert_eq block "$(decide_bash "$(reponse 0 3.0 lune 1 1)")"   "portée inconnue → règle 2 s'applique"
+assert_eq allow "$(decide_bash "$(reponse 0 0.1 "" 1 1)")"     "portée vide sans destruction → allow"
+
+# Borne exacte de la règle 2
+assert_eq block "$(decide_bash "$(reponse 0 2.5 machine 1 1)")" "R2 à la borne exacte"
+
 finish

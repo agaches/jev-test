@@ -6,17 +6,34 @@
 # awk est utilisé parce que bash ne compare pas les flottants.
 
 decide_bash() {
-  local r=$1
-  # Une réponse illisible n'autorise jamais en silence : escalade en `ask`.
-  # Distinct d'un JSON valide aux champs absents, qui garde ses défauts sûrs.
-  jq -e . >/dev/null 2>&1 <<<"$r" || { printf ask; return; }
-
+  local r=$1 champs
   local secret destr blast conf_d conf_b
-  secret=$(jq -r '.answers.secret_exposure.noul      // 0'     <<<"$r")
-  destr=$( jq -r '.answers.destructiveness.score     // 0'     <<<"$r")
-  blast=$( jq -r '.answers.blast_radius.choice       // "cwd"' <<<"$r")
-  conf_d=$(jq -r '.answers.destructiveness.confidence // 1'    <<<"$r")
-  conf_b=$(jq -r '.answers.blast_radius.confidence    // 1'    <<<"$r")
+
+  # Extraction stricte. Un champ présent mais du mauvais type rend la réponse
+  # illisible : on escalade en `ask`, jamais en `allow`. Sans cette validation,
+  # jq n'émet rien, awk reçoit une chaîne vide qui n'est pas un « strnum », la
+  # comparaison dégénère en comparaison de chaînes et les cinq règles tombent.
+  # Un champ absent garde son défaut sûr : `{"answers":{}}` reste `allow`.
+  # Une portée présente mais illisible est ramenée à la plus large, pour que la
+  # règle 2 continue de s'appliquer au lieu d'être contournée.
+  champs=$(jq -er '
+    def nombre($defaut):
+      if . == null then $defaut
+      elif type == "number" then .
+      else error("type inattendu") end;
+    def portee:
+      if . == null then "cwd"
+      elif type == "string" and (. == "cwd" or . == "repo"
+           or . == "machine" or . == "shared_remote") then .
+      else "shared_remote" end;
+    [ (.answers.secret_exposure.noul       | nombre(0)),
+      (.answers.destructiveness.score      | nombre(0)),
+      (.answers.blast_radius.choice        | portee),
+      (.answers.destructiveness.confidence | nombre(1)),
+      (.answers.blast_radius.confidence    | nombre(1))
+    ] | @tsv' <<<"$r" 2>/dev/null) || { printf ask; return; }
+
+  IFS=$'\t' read -r secret destr blast conf_d conf_b <<<"$champs"
 
   awk -v s="$secret" -v d="$destr" -v b="$blast" \
       -v cd="$conf_d" -v cb="$conf_b" \
@@ -34,13 +51,15 @@ decide_bash() {
 }
 
 decide_file() {
-  local r=$1
-  # Une réponse illisible n'autorise jamais en silence : escalade en `ask`.
-  # Distinct d'un JSON valide aux champs absents, qui garde ses défauts sûrs.
-  jq -e . >/dev/null 2>&1 <<<"$r" || { printf ask; return; }
+  local r=$1 sensible
 
-  local sensible
-  sensible=$(jq -r '.answers.sensitive_file.noul // 0' <<<"$r")
+  # Même extraction stricte que decide_bash : voir le commentaire là-haut.
+  sensible=$(jq -er '
+    def nombre($defaut):
+      if . == null then $defaut
+      elif type == "number" then .
+      else error("type inattendu") end;
+    .answers.sensitive_file.noul | nombre(0)' <<<"$r" 2>/dev/null) || { printf ask; return; }
   awk -v v="$sensible" \
       -v tb="${JEV_T_FILE_BLOCK:-0.80}" \
       -v ta="${JEV_T_FILE_ASK:-0.50}" '
