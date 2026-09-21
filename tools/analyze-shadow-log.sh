@@ -55,7 +55,7 @@ Jev bloque, regex autorise  : $jev_block_regex_allow
 Décisions soumises à Jev    : $consultees
 Replis (mode dégradé)       : $replis
 Taux de repli               : $taux_repli %
-Latence Jev p95             : $p95
+Latence Jev p95             : $p95 ms
 
 Critères de passage en mode actif (spec §10) :
   1. >= 200 décisions Bash          : $critere1

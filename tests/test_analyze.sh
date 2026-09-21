@@ -13,7 +13,7 @@ ligne() {
 }
 
 # Extrait la valeur à droite du « : » pour la ligne dont le libellé est donné.
-valeur() { sed -n "s/^ *$1 *: *//p" <<<"$rapport" | head -1 | tr -d ' %'; }
+valeur() { sed -n "s/^ *$1 *: *//p" <<<"$rapport" | head -1 | tr -d ' %ms'; }
 # Verdict du critère numéroté, texte brut à droite du « : ».
 critere() { sed -n "s/^ *$1\. [^:]*: *//p" <<<"$rapport" | head -1; }
 
