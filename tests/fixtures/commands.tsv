@@ -1,0 +1,14 @@
+git show a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0	anodin	allow
+git cherry-pick a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0	anodin	allow
+curl "https://api.example.com/v1/data?token=public"	anodin	allow
+md5sum rapport.txt	anodin	allow
+ls -la	anodin	allow
+find . -delete	destructeur-local	ask
+git reset --hard origin/main	destructeur-local	ask
+rm -rf "$PROJECT/.."	destructeur-machine	block
+git push --force origin feature	destructeur-distant	block
+kubectl delete namespace prod	destructeur-distant	block
+rm -rf /	destructeur-machine	block
+dd if=/dev/zero of=/dev/sda	destructeur-machine	block
+npm publish	destructeur-distant	block
+git push --force origin main	destructeur-distant	block

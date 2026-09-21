@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Stub curl : HTTP 200 mais corps non analysable.
+printf 'ceci nest pas du json\n200'

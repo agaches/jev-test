@@ -403,7 +403,7 @@ Chacun doit produire le verdict de repli et un enregistrement de journal.
 
 | Réf | Risque | Traitement |
 |---|---|---|
-| R1 | Toute commande Bash part vers un tiers. En contexte professionnel, les commandes contiennent des noms d'hôtes, de projets et de bases internes. | **Arbitré le 2026-09-18 : accepté dans le cadre d'un POC.** Le périmètre d'usage est la validation technique, pas le code client. `JEV_GUARD_DISABLE` permet une coupure par projet. Un passage en usage courant sur du code client rouvrirait cet arbitrage. |
+| R1 | Toute commande Bash part vers un tiers. En contexte professionnel, les commandes contiennent des noms d'hôtes, de projets et de bases internes. | **Arbitré le 2026-09-18 : accepté dans le cadre d'un POC.** Le périmètre d'usage est la validation technique, pas le code client. `JEV_GUARD_DISABLE` permet une coupure par projet. Un passage en usage courant sur du code client rouvrirait cet arbitrage. Levée structurelle attendue : un Jev à poids ouverts exécuté localement ferme ce risque au lieu de le contenir (§14). |
 | R2 | Le pré-filtre ne couvre que des formats de secrets connus. Un secret maison part vers Jev. | Périmètre assumé. Le jeu de motifs est extensible ; §7 documente le critère d'ajout. |
 | R3 | Une panne TypeSafe ramène silencieusement au comportement actuel. | Le taux de bascule est journalisé et fait partie des critères de phase B. |
 | R4 | Les seuils du §8.3 ne sont pas calibrés sur des données réelles. | C'est précisément l'objet de la phase A. Ils ne doivent pas être considérés comme validés avant. |
@@ -412,8 +412,72 @@ Chacun doit produire le verdict de repli et un enregistrement de journal.
 
 ## 14. Suites hors périmètre
 
+**Cadre de travail de cette liste.** Ce qu'on cherche ici, c'est identifier des
+cas d'usage pour ce type de modèle : décision typée, calibrée, à faible latence.
+La question de la sensibilité de la donnée n'est pas rouverte à chaque entrée de
+la liste ; elle est posée une fois pour toutes en R1 et reste une contrainte
+connue. Un nouveau cas d'usage n'a donc pas à re-plaider l'arbitrage, seulement à
+signaler en une ligne ce qu'il change au périmètre de données exposé, quand il le
+change (le routage de modèle du §14.1 le fait au point 3 : il voit tous les
+prompts, pas seulement des commandes shell).
+
+**Levée structurelle attendue.** Un Jev à poids ouverts, exécutable localement,
+supprimerait le problème à la racine plutôt que de le contenir : plus rien ne
+sort de la machine, R1 tombe, le pré-filtre du §7 redevient une précaution et non
+une nécessité, et le budget de latence se réduit à un appel local. Ce serait
+aussi un gain de performance de premier ordre sur les cas à fort volume de cette
+liste, où le coût par appel réseau est ce qui décide de la viabilité. Cette
+hypothèse conditionne l'ordre de priorité ci-dessous : les cas que l'exposition
+de données freine aujourd'hui deviendraient les plus rentables le jour où elle
+disparaît.
+
 Les autres cibles Jev identifiées lors de l'analyse, par ordre de retour attendu :
 compaction de contexte, skills à fort volume (`liza-logs`, `dpe-search`, `rech-immo`,
-`document-organizer`), porte de compression flow-lean, triage de revue de code. Chacune
-fera l'objet d'une spec propre. La couche `lib/jev-client.sh` construite ici est prévue
-pour être réutilisée telle quelle.
+`document-organizer`), porte de compression flow-lean, triage de revue de code,
+routage de modèle (§14.1). Chacune fera l'objet d'une spec propre. La couche
+`lib/jev-client.sh` construite ici est prévue pour être réutilisée telle quelle.
+
+### 14.1 Routage de modèle — Jev en aiguilleur
+
+Ajouté le 2026-09-18. Non cadré, pas de spec à ce jour.
+
+**Idée.** Utiliser Jev comme routeur automatique en amont de l'appel au modèle :
+classer le prompt entrant, puis choisir le modèle et le budget de raisonnement
+adaptés plutôt que de servir le plus gros modèle à chaque tour. C'est la forme
+d'une brique type RouteLLM, avec la décision typée de Jev à la place d'un
+classifieur maison à entraîner.
+
+**Pourquoi Jev colle à ce problème.** Même forme que le hook de sécurité : un
+jugement contextuel sur une chaîne, une réponse dans un espace fini connu
+d'avance, une probabilité associée, et un budget de latence serré parce que la
+décision se prend avant chaque tour. Le seuillage resterait en code, jamais dans
+le modèle (D5).
+
+**Questions typées pressenties**, à confirmer au cadrage :
+
+| Question | Type | Rôle |
+|---|---|---|
+| `task_kind` | `choice` | `code`, `debug`, `analyse`, `rédaction`, `conversation`, `outillage` |
+| `reasoning_needed` | `score` | rubrique ordonnée : réponse directe → raisonnement long |
+| `context_breadth` | `choice` | fichier unique, module, dépôt entier |
+| `stakes` | `noul` | une erreur coûte-t-elle cher (production, données, argent) ? |
+
+La table de routage `(task_kind, reasoning_needed, stakes) → modèle + budget`
+reste en configuration, externalisée comme les seuils du §8.3 (risque R5).
+
+**Points durs à trancher au cadrage.**
+
+1. **Le routeur paie sa propre latence à chaque tour.** Le hook de sécurité peut
+   se cacher derrière un cache indexé par commande ; un prompt en langage naturel
+   se répète beaucoup moins. Le gain de coût doit couvrir l'appel de routage.
+2. **Un mauvais aiguillage vers le bas est silencieux.** Contrairement à un
+   blocage de sécurité, une réponse produite par un modèle sous-dimensionné ne
+   lève aucune alerte. Le déploiement en deux phases du §10 s'applique tel quel :
+   mode ombre d'abord, désaccords journalisés, bascule seulement sur données.
+3. **Le routeur voit tous les prompts**, donc le risque R1 est plus large ici
+   que pour les commandes Bash. Un pré-filtre analogue au §7 serait à repenser :
+   les motifs de valeurs de secrets ne suffisent pas à couvrir du texte libre.
+4. **Périmètre d'application à définir** : aiguillage entre modèles d'un même
+   fournisseur, ou entre fournisseurs. Le second cas rouvre l'arbitrage R1.
+
+Nom de code proposé par l'auteur, à ses risques : *JevFaitLeTraffic*.

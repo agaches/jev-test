@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Stub curl : consigne ses arguments dans $JEV_STUB_ARGS, puis répond comme
+# curl-ok. Sert à vérifier ce que le client passe réellement à curl.
+printf '%s\n' "$*" > "$JEV_STUB_ARGS"
+printf '%s' '{"model":"jev-1.13.0","answers":{"secret_exposure":{"noul":0.02},"destructiveness":{"score":0.3,"confidence":0.94},"blast_radius":{"choice":"cwd","confidence":0.91}}}'
+printf '\n200'
