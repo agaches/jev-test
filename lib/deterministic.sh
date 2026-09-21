@@ -8,6 +8,10 @@
 
 # Normalisation lexicale : réduit les segments `.` et `..` sans toucher au
 # disque. Le chemin peut désigner un fichier qui n'existe pas encore.
+# Un `..` en tête d'un chemin RELATIF est absorbé sans rien remonter : le
+# résultat n'ayant pas de préfixe à retirer, `../../etc/x` devient `etc/x`.
+# C'est sans conséquence sur le verdict, puisqu'un chemin relatif ne peut de
+# toute façon pas couvrir une zone autorisée, toujours absolue : il est bloqué.
 # Plafond assumé : purement lexical, les liens symboliques ne sont pas résolus.
 # Un lien placé dans une zone autorisée et pointant hors zone reste vu comme
 # autorisé. Les résoudre exigerait un accès disque et un outil hors contrainte.

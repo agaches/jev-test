@@ -1,10 +1,20 @@
 #!/usr/bin/env bash
 # Repli en mode dégradé (spec §9).
 #
-# Reprend à l'identique les règles de dangerous-actions-blocker.sh et
-# security-check.sh. Reproduit le comportement actuel, faux positifs compris.
-# Ne pas « améliorer » ces règles : leur rôle est d'être un plancher stable et
-# prévisible quand Jev est indisponible.
+# Reprend les listes de motifs de dangerous-actions-blocker.sh et
+# security-check.sh, y compris leurs faux positifs connus (un SHA git pris pour
+# une clé, un `token=` en nom de paramètre d'URL) : ces cas-là relèvent de Jev
+# en mode nominal, pas d'un durcissement de ce fichier.
+#
+# Ce n'est PAS une copie conforme du comportement des deux anciens hooks. Un
+# point diverge, et c'est assumé : `rm -r`, `rmdir` et `unlink` produisent ici
+# un verdict `ask`, donc une demande de confirmation, là où l'ancien hook se
+# contentait d'un avertissement et sortait en 0. `rm -rf node_modules` demande
+# donc confirmation dès le mode ombre, configuration par défaut. On ne revient
+# pas dessus : c'est un plancher, pas une reproduction.
+#
+# Ne pas relâcher ces règles pour faire taire un faux positif : leur rôle est
+# d'être un plancher stable et prévisible quand Jev est indisponible.
 
 _FB_DANGEREUX=(
   'rm -rf /' 'rm -rf ~' 'rm -rf $HOME' 'dd if=' 'mkfs' ':(){:|:&};:'

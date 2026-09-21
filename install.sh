@@ -15,7 +15,17 @@ done
 [ -f "$REGLAGES" ] || { printf 'Introuvable : %s\n' "$REGLAGES" >&2; exit 1; }
 [ -x "$HOOK" ]     || { printf 'Hook non exécutable : %s\n' "$HOOK" >&2; exit 1; }
 
-SAUVEGARDE="$REGLAGES.avant-jev-guard.$(date +%Y%m%d%H%M%S)"
+# Nom de sauvegarde non collisionnant. L'horodatage est à la seconde : deux
+# passages dans la même seconde produisaient le même nom, et la sauvegarde
+# d'origine était écrasée par la version déjà modifiée — la ligne
+# « Restaurer : … » affichée en fin d'exécution devenait alors fausse.
+BASE_SAUVEGARDE="$REGLAGES.avant-jev-guard.$(date +%Y%m%d%H%M%S)"
+SAUVEGARDE="$BASE_SAUVEGARDE"
+suffixe=1
+while [ -e "$SAUVEGARDE" ]; do
+  SAUVEGARDE="$BASE_SAUVEGARDE.$suffixe"
+  suffixe=$((suffixe + 1))
+done
 cp "$REGLAGES" "$SAUVEGARDE"
 printf 'Sauvegarde : %s\n' "$SAUVEGARDE"
 
@@ -24,11 +34,17 @@ printf 'Sauvegarde : %s\n' "$SAUVEGARDE"
 TEMPO=$(mktemp "${TMPDIR:-/tmp}/jev-guard-reglages.XXXXXX")
 trap 'rm -f "$TEMPO"' EXIT
 
+# `jev-guard` fait partie du filtre de retrait : sans lui, une seconde
+# exécution enregistrait le hook une deuxième fois. Conséquences mesurables :
+# deux processus et deux appels API facturés par commande, et deux lignes de
+# journal par décision — ce qui double le compteur du critère 1, les
+# « 200 décisions » étant alors atteintes à 100 commandes réelles.
 jq --arg hook "$HOOK" '
   .hooks.PreToolUse = (
     [ .hooks.PreToolUse[]?
       | .hooks |= map(select(
-          (.command // "") | test("dangerous-actions-blocker|security-check") | not))
+          (.command // "")
+          | test("dangerous-actions-blocker|security-check|jev-guard") | not))
       | select((.hooks | length) > 0) ]
     + [ { matcher: "", hooks: [ { type: "command", command: $hook, timeout: 10 } ] } ]
   )
