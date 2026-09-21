@@ -22,8 +22,27 @@ if [ "$consultees" -gt 0 ]; then
 else
   taux_repli=0
 fi
-p95=$(jq -s '[.[] | select(.source=="jev") | .latency_ms] | sort
+mesures=$(jq -s '[.[] | select(.source=="jev") | .latency_ms | numbers] | length' "$JOURNAL")
+p95=$(jq -s '[.[] | select(.source=="jev") | .latency_ms | numbers] | sort
              | if length == 0 then 0 else .[(length * 0.95 | floor)] end' "$JOURNAL")
+
+if [ "$bash_total" -ge 200 ]; then critere1=OUI; else critere1=NON; fi
+
+if [ "$mesures" -eq 0 ]; then
+  critere4="sans donnée"
+elif [ "$p95" -lt 800 ]; then
+  critere4=OUI
+else
+  critere4=NON
+fi
+
+if [ "$consultees" -eq 0 ]; then
+  critere5="sans donnée"
+elif [ "$taux_repli" -lt 5 ]; then
+  critere5=OUI
+else
+  critere5=NON
+fi
 
 cat <<EOF
 Rapport de phase A — $JOURNAL
@@ -36,14 +55,14 @@ Jev bloque, regex autorise  : $jev_block_regex_allow
 Décisions soumises à Jev    : $consultees
 Replis (mode dégradé)       : $replis
 Taux de repli               : $taux_repli %
-Latence Jev p95             : $p95 ms
+Latence Jev p95             : $p95
 
 Critères de passage en mode actif (spec §10) :
-  1. >= 200 décisions Bash          : $([ "$bash_total" -ge 200 ] && echo OUI || echo NON)
+  1. >= 200 décisions Bash          : $critere1
   2. désaccords bloquants relus     : manuel
   3. aucun allow Jev / block regex justifié : $jev_allow_regex_block à relire
-  4. p95 < 800 ms                   : $([ "$p95" -lt 800 ] && echo OUI || echo NON)
-  5. taux de repli < 5 %            : $([ "$taux_repli" -lt 5 ] && echo OUI || echo NON)
+  4. p95 < 800 ms                   : $critere4
+  5. taux de repli < 5 %            : $critere5
   6. seuils réajustés               : manuel
 
 Désaccords à relire :
