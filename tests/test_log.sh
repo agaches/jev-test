@@ -23,14 +23,19 @@ assert_eq "118"   "$(jq -r '.latency_ms' "$JEV_GUARD_LOG")" "latence"
 log_decision "Bash" "rm -rf /tmp/x" "jev" "allow" "block" '{}' "0.5" "90"
 assert_eq "false" "$(jq -r '.agreed' "$JEV_GUARD_LOG" | tail -1)" "désaccord détecté"
 
-# Le journal ne doit JAMAIS contenir un secret en clair
-log_decision "Bash" 'export K=sk-proj-AAAAAAAAAAAAAAAAAAAAAAAA' \
-  "prefilter" "block" "block" '{}' "1.0" "0"
+# Le journal ne doit JAMAIS contenir un secret en clair (constat C1).
+CMD_SECRET='export K=sk-proj-AAAAAAAAAAAAAAAAAAAAAAAA'
+log_decision "Bash" "$CMD_SECRET" "prefilter" "block" "block" '{}' "1.0" "0"
 derniere=$(tail -1 "$JEV_GUARD_LOG")
 assert_eq "0" "$(grep -c 'sk-proj-AAAAAAAAAAAAAAAAAAAAAAAA' <<<"$derniere")" \
   "aucun secret en clair dans le journal"
-assert_eq "export K=[REDACTED]" "$(jq -r '.cmd_redacted' <<<"$derniere")" \
-  "commande expurgée"
+assert_eq "[commande retenue : secret détecté]" \
+  "$(jq -r '.cmd_redacted' <<<"$derniere")" "commande entière retenue"
+
+# …mais l'empreinte reste calculée sur la commande RÉELLE, sans quoi la
+# phase A ne saurait plus distinguer deux commandes retenues.
+assert_eq "$(printf '%s' "$CMD_SECRET" | _sha256)" \
+  "$(jq -r '.cmd_sha256' <<<"$derniere")" "cmd_sha256 calculé sur la commande réelle"
 
 # Appel à 8 arguments produit cause égal à la chaîne vide
 log_decision "Bash" "git log" "jev" "allow" "allow" '{}' "0.99" "50"

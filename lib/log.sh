@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 # Journal JSONL des décisions (spec §9).
-# Dépend de prefilter_redact : aucune commande ne part en clair sur disque.
+#
+# Ce que ce journal garantit, et ce qu'il ne garantit pas :
+#
+# - aucune VALEUR de secret reconnue par le pré-filtre ne part en clair : dès
+#   qu'un motif de `prefilter.sh` correspond, `prefilter_redact` retient la
+#   commande entière, il n'en reste que le `cmd_sha256` et le nom du motif ;
+# - hors secret reconnu, la commande est journalisée TELLE QUELLE, en clair.
+#   C'est voulu : sans elle, les désaccords du critère 2 de la phase A ne sont
+#   pas relisables. C'est le prix de la phase A, et le fichier est en clair,
+#   sans rotation ni plafond, dans `~/.claude/logs/`. Voir la section « Vie
+#   privée » du README pour le purger.
+#
+# Le volet cache de la contrainte, lui, tient : `cache.sh` ne stocke jamais le
+# sujet, seulement son empreinte.
 
 JEV_GUARD_LOG=${JEV_GUARD_LOG:-$HOME/.claude/logs/jev-guard.jsonl}
 

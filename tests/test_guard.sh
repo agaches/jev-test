@@ -32,6 +32,45 @@ assert_eq "prefilter" "$(jq -r '.source' "$JEV_GUARD_LOG" | tail -1)" \
   "source = prefilter, donc aucun appel réseau"
 assert_eq "0" "$(grep -c 'sk-proj-AAAAAAAAAAAAAAAAAAAAAAAA' "$JEV_GUARD_LOG")" \
   "le secret n'atteint pas le journal"
+
+# --- Constat C1 : bout en bout, corps de clé PEM + clé secrète AWS ---
+# Les deux motifs concernés (PEM, AKIA) ne couvrent que l'en-tête ou
+# l'identifiant PUBLIC : l'ancienne expurgation laissait la valeur du secret
+# partir en clair dans ~/.claude/logs/jev-guard.jsonl. Valeurs à entropie
+# nulle, marqueur PEM assemblé à l'exécution.
+ESP=' '
+PEM="-----BEGIN RSA PRIVATE${ESP}KEY-----"
+CORPS_PEM='AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+AWS_SECRET='0000000000000000000000000000000000000000'
+CMD_C1="printf '%s' '$PEM$CORPS_PEM' ; aws configure set aws_secret_access_key $AWS_SECRET ; echo AKIA0000000000000000"
+
+: > "$JEV_GUARD_LOG"
+rc=$(lancer "$(entree Bash "$(jq -nc --arg c "$CMD_C1" '{command:$c}')")")
+assert_eq "2" "$rc" "C1 : pré-filtre bloque PEM + clé AWS"
+assert_eq "prefilter" "$(jq -r '.source' "$JEV_GUARD_LOG" | tail -1)" \
+  "C1 : source = prefilter"
+
+# Aucun fragment du secret, où que ce soit dans le fichier journal.
+assert_eq "0" "$(grep -c -- "$CORPS_PEM" "$JEV_GUARD_LOG")" \
+  "C1 : le corps de clé PEM n'atteint pas le journal"
+assert_eq "0" "$(grep -c -- "$AWS_SECRET" "$JEV_GUARD_LOG")" \
+  "C1 : la clé secrète AWS n'atteint pas le journal"
+assert_eq "0" "$(grep -c -- 'AKIA0000000000000000' "$JEV_GUARD_LOG")" \
+  "C1 : l'identifiant AKIA n'atteint pas le journal"
+assert_eq "0" "$(grep -c -- 'BEGIN RSA' "$JEV_GUARD_LOG")" \
+  "C1 : l'en-tête PEM n'atteint pas le journal"
+assert_eq "[commande retenue : secret détecté]" \
+  "$(jq -r '.cmd_redacted' "$JEV_GUARD_LOG" | tail -1)" \
+  "C1 : commande entière retenue"
+
+# Ce qui subsiste doit suffire à la phase A : empreinte de la commande réelle
+# et nom du motif détecté.
+assert_eq "$(printf '%s' "$CMD_C1" | _sha256)" \
+  "$(jq -r '.cmd_sha256' "$JEV_GUARD_LOG" | tail -1)" \
+  "C1 : cmd_sha256 calculé sur la commande réelle"
+assert_eq "1" \
+  "$(jq -r '.cause' "$JEV_GUARD_LOG" | tail -1 | grep -c '^motif:')" \
+  "C1 : nom du motif journalisé en cause"
 export JEV_GUARD_CURL="$ROOT/tests/stubs/curl-ok"
 
 # Repli quand Jev échoue
@@ -128,6 +167,55 @@ assert_eq "fallback" "$(jq -r '.source' "$JEV_GUARD_LOG" | tail -1)" \
 assert_eq "mktemp_echec" "$(jq -r '.cause' "$JEV_GUARD_LOG" | tail -1)" \
   "mktemp indisponible : cause journalisée"
 export TMPDIR="$TMPDIR_SAUVE"
+export JEV_GUARD_CURL="$ROOT/tests/stubs/curl-ok"
+
+# --- Constat I2 : jq introuvable ---
+# Un PATH réduit à un répertoire d'appoint où jq est délibérément absent.
+# `fallback.sh`, `prefilter.sh` et `deterministic.sh` sont du bash pur : ils
+# restent applicables, et doivent l'être. Auparavant le hook sortait en 0 sur
+# une commande destructrice, avec un simple message sur stderr.
+BIN_SANS_JQ="$tmp/bin-sans-jq"
+mkdir -p "$BIN_SANS_JQ"
+for outil in bash cat tr sed grep basename dirname; do
+  chemin=$(command -v "$outil") && ln -sf "$chemin" "$BIN_SANS_JQ/$outil"
+done
+
+# Les entrées sont fabriquées AVANT de réduire le PATH : `entree()` appelle jq,
+# et un PATH sans jq lui ferait produire des chaînes vides — le hook bloquerait
+# alors sur une extraction en échec, et le test ne prouverait plus rien.
+E_RM=$(entree Bash '{"command":"rm -rf /"}')
+E_DD=$(entree Bash '{"command":"dd if=/dev/zero of=/dev/sda"}')
+E_LEURRE=$(entree Bash '{"command":"rm -rf / ; echo \"command\": \"ls\""}')
+E_SECRET=$(entree Bash '{"command":"export K=sk-proj-AAAAAAAAAAAAAAAAAAAAAAAA"}')
+E_PASSWD=$(entree Write '{"file_path":"/etc/passwd"}')
+E_ANODIN=$(entree Bash '{"command":"git status"}')
+E_SANS_SUJET='{"tool_name":"Bash","tool_input":{}}'
+
+PATH_SAUVE="$PATH"
+export PATH="$BIN_SANS_JQ"
+assert_eq "1" "$(command -v jq >/dev/null 2>&1; echo $?)" \
+  "I2 : jq bien introuvable dans le PATH du test"
+
+export JEV_GUARD_CURL=/bin/false   # aucun appel réseau n'est attendu
+assert_eq "2" "$(lancer "$E_RM")" \
+  "I2 : sans jq, le plancher regex bloque toujours rm -rf /"
+assert_eq "2" "$(lancer "$E_DD")" \
+  "I2 : sans jq, dd sur un périphérique bloc reste bloqué"
+
+# Le sujet doit être extrait sans jq : une commande qui contient elle-même
+# `"command": "…"` ne doit pas détourner l'extraction vers sa propre valeur.
+assert_eq "2" "$(lancer "$E_LEURRE")" \
+  "I2 : sans jq, l'extraction ne se laisse pas détourner"
+assert_eq "2" "$(lancer "$E_SECRET")" \
+  "I2 : sans jq, le pré-filtre anti-exfiltration tient"
+assert_eq "2" "$(lancer "$E_PASSWD")" \
+  "I2 : sans jq, le confinement de chemin tient"
+assert_eq "0" "$(lancer "$E_ANODIN")" \
+  "I2 : sans jq, une commande anodine passe"
+assert_eq "2" "$(lancer "$E_SANS_SUJET")" \
+  "I2 : sans jq, une extraction en échec bloque"
+
+export PATH="$PATH_SAUVE"
 export JEV_GUARD_CURL="$ROOT/tests/stubs/curl-ok"
 
 # MODE OMBRE : Jev n'a jamais le dernier mot

@@ -22,8 +22,82 @@ _LIB=$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)
 
 JEV_GUARD_MODE=${JEV_GUARD_MODE:-shadow}
 
+# Extraction d'un champ chaîne d'un document JSON, sans jq. Uniquement pour le
+# mode dégradé ci-dessous : le reste du hook utilise jq.
+#
+# `s///` de sed remplace la PREMIÈRE occurrence, et c'est ce qui compte ici :
+# avec une substitution gloutonne, une commande contenant elle-même
+# `"command": "…"` détournerait l'extraction vers une valeur qu'elle contrôle,
+# et ferait juger une chaîne anodine à la place de la vraie. Le séparateur
+# U+0001 ne peut pas apparaître dans un document JSON valide.
+_JEV_SEP=$'\001'
+_sans_jq_chaine() {
+  local entree=$1 champ=$2 reste valeur='' c i n
+  reste=$(printf '%s' "$entree" | tr '\n' ' ' \
+          | sed -- "s/\"$champ\"[[:space:]]*:[[:space:]]*\"/$_JEV_SEP/")
+  case "$reste" in *"$_JEV_SEP"*) ;; *) return 1 ;; esac
+  reste=${reste#*"$_JEV_SEP"}
+
+  # Jusqu'au premier guillemet non échappé. Les séquences d'échappement JSON
+  # sont conservées telles quelles : le plancher regex cherche des sous-chaînes
+  # littérales, il n'a pas besoin d'une valeur décodée.
+  n=${#reste}
+  for (( i = 0; i < n; i++ )); do
+    c=${reste:i:1}
+    if [ "$c" = '\' ]; then
+      valeur+=${reste:i:2}; i=$((i + 1)); continue
+    fi
+    if [ "$c" = '"' ]; then printf '%s' "$valeur"; return 0; fi
+    valeur+=$c
+  done
+  return 1   # guillemet fermant jamais rencontré : extraction en échec
+}
+
 if ! command -v jq >/dev/null 2>&1; then
-  printf 'jev-guard inactif : jq est introuvable.\n' >&2
+  # Sans jq, on ne sait ni lire proprement l'entrée ni écrire le JSON de
+  # décision. Mais `fallback.sh`, `prefilter.sh` et `deterministic.sh` sont du
+  # bash pur : ils ne demandent ni jq ni réseau. Le plancher existe, il doit
+  # s'appliquer. Un `exit 0` inconditionnel ici laissait passer, en silence,
+  # tout ce que ces trois étages bloquent — déclencheurs réalistes : un
+  # `brew upgrade` en cours, un PATH réécrit par un `.envrc`.
+  #
+  # Aucune journalisation possible dans ce mode (log.sh dépend de jq).
+  printf 'jev-guard dégradé : jq introuvable, plancher local seul.\n' >&2
+  _ENTREE=$(cat)
+
+  _OUTIL=$(_sans_jq_chaine "$_ENTREE" tool_name) || {
+    printf 'BLOQUÉ par jev-guard : entrée illisible sans jq.\n' >&2; exit 2; }
+
+  case "$_OUTIL" in
+    Bash)       _CHAMP=command ;;
+    Edit|Write) _CHAMP=file_path ;;
+    *)          exit 0 ;;   # outil hors périmètre
+  esac
+
+  _SUJET=$(_sans_jq_chaine "$_ENTREE" "$_CHAMP") || {
+    printf 'BLOQUÉ par jev-guard : sujet illisible sans jq (%s).\n' "$_OUTIL" >&2
+    exit 2; }
+  [ -n "$_SUJET" ] || {
+    printf 'BLOQUÉ par jev-guard : sujet vide sans jq (%s).\n' "$_OUTIL" >&2
+    exit 2; }
+
+  if _MOTIF=$(prefilter_match "$_SUJET"); then
+    printf 'BLOQUÉ par jev-guard : valeur de secret détectée (motif %s).\n' \
+      "$_MOTIF" >&2
+    exit 2
+  fi
+  if [ "$_OUTIL" = "Edit" ] || [ "$_OUTIL" = "Write" ]; then
+    if [ "$(path_containment_verdict "$_SUJET")" = "block" ]; then
+      printf 'BLOQUÉ par jev-guard : édition hors des zones autorisées.\n' >&2
+      exit 2
+    fi
+  fi
+  if [ "$(fallback_verdict "$_OUTIL" "$_SUJET")" = "block" ]; then
+    printf 'BLOQUÉ par jev-guard : règle locale (jq introuvable).\n' >&2
+    exit 2
+  fi
+  # Verdict `ask` : le JSON de décision est inexprimable sans jq, on laisse
+  # passer. C'est l'unique autorisation concédée par ce mode.
   exit 0
 fi
 
@@ -92,8 +166,13 @@ if [ "$OUTIL" = "Edit" ] || [ "$OUTIL" = "Write" ]; then
 fi
 
 # --- Étage 2 : pré-filtre anti-exfiltration (aucun réseau, spec §7) ---
+# La commande n'est PAS journalisée sur ce chemin : `prefilter_redact` la
+# retient entièrement dès qu'un motif correspond (voir lib/prefilter.sh). Le
+# `cmd_sha256`, calculé sur la commande réelle, et le nom du motif transmis en
+# `cause` sont tout ce qui subsiste — et tout ce dont la phase A a besoin.
 if MOTIF=$(prefilter_match "$SUJET"); then
-  log_decision "$OUTIL" "$SUJET" "prefilter" "block" "$REGEX_VERDICT" '{}' null 0
+  log_decision "$OUTIL" "$SUJET" "prefilter" "block" "$REGEX_VERDICT" '{}' null 0 \
+    "motif:$MOTIF"
   emettre block "valeur de secret détectée localement (motif $MOTIF)"
 fi
 
