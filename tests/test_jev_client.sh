@@ -68,4 +68,25 @@ assert_eq "cle_absente" "$JEV_LAST_ERROR" "cause clé absente"
 JEV_GUARD_CURL="$ROOT/tests/stubs/curl-ok" jev_query "$p" >/dev/null 2>&1
 assert_eq "" "$JEV_LAST_ERROR" "cause vidée après un succès"
 
+# --- Constat I7 : JEV_GUARD_TIMEOUT_MS non numérique ---
+# `curl --max-time 0` ne veut pas dire « expire tout de suite », il veut dire
+# « n'expire jamais ». Une valeur mal saisie faisait donc pendre chaque appel
+# d'outil jusqu'au timeout du hook, puis autorisait la commande.
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+export JEV_STUB_ARGS="$tmp/args"
+max_time() { sed -n -- 's/.*--max-time \([^ ]*\).*/\1/p' "$JEV_STUB_ARGS"; }
+
+for mauvaise in abc '1,5' '1500ms' '' '0' '00' '-1' '1.5'; do
+  JEV_GUARD_TIMEOUT_MS="$mauvaise" JEV_GUARD_CURL="$ROOT/tests/stubs/curl-args" \
+    jev_query "$p" >/dev/null 2>&1
+  assert_eq "1.500" "$(max_time)" "I7 : [$mauvaise] retombe sur 1500 ms"
+done
+
+JEV_GUARD_TIMEOUT_MS=2500 JEV_GUARD_CURL="$ROOT/tests/stubs/curl-args" \
+  jev_query "$p" >/dev/null 2>&1
+assert_eq "2.500" "$(max_time)" "I7 : une valeur numérique valide est respectée"
+
+JEV_GUARD_CURL="$ROOT/tests/stubs/curl-args" jev_query "$p" >/dev/null 2>&1
+assert_eq "1.500" "$(max_time)" "I7 : défaut à 1500 ms sans variable"
+
 finish

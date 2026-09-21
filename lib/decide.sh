@@ -13,7 +13,12 @@ decide_bash() {
   # illisible : on escalade en `ask`, jamais en `allow`. Sans cette validation,
   # jq n'émet rien, awk reçoit une chaîne vide qui n'est pas un « strnum », la
   # comparaison dégénère en comparaison de chaînes et les cinq règles tombent.
-  # Un champ absent garde son défaut sûr : `{"answers":{}}` reste `allow`.
+  # Un champ absent prend le défaut le plus prudent, pas le plus commode. Pour
+  # les scores, c'est 0. Pour les CONFIANCES, c'est 0 aussi : un défaut à 1
+  # neutralisait purement et simplement la règle 4 — si l'API omettait le
+  # champ, tout ce qui passait sous le seuil de destructivité ressortait en
+  # `allow` sans jamais escalader. Avec 0, une confiance absente déclenche la
+  # règle 4 et escalade en `ask`. `{"answers":{}}` vaut donc `ask`.
   # Une portée présente mais illisible est ramenée à la plus large, pour que la
   # règle 2 continue de s'appliquer au lieu d'être contournée.
   champs=$(jq -er '
@@ -31,8 +36,8 @@ decide_bash() {
     [ (.answers.secret_exposure.noul       | nombre(0)),
       (.answers.destructiveness.score      | nombre(0)),
       (.answers.blast_radius.choice        | portee),
-      (.answers.destructiveness.confidence | nombre(1)),
-      (.answers.blast_radius.confidence    | nombre(1))
+      (.answers.destructiveness.confidence | nombre(0)),
+      (.answers.blast_radius.confidence    | nombre(0))
     ] | @tsv' <<<"$r" 2>/dev/null) || { printf ask; return; }
 
   IFS=$'\t' read -r secret destr blast conf_d conf_b <<<"$champs"

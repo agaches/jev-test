@@ -185,9 +185,23 @@ if [ -n "${JEV_GUARD_DISABLE:-}" ]; then
 fi
 
 # --- Étage 3 : cache ---
+# Le verdict n'est PAS relu du cache : il est rejoué sur les scores mémorisés
+# (voir lib/cache.sh). Un `.verdict` forgé dans le répertoire de cache n'a donc
+# aucune prise, et un seuil réajusté s'applique sans attendre l'expiration.
 CLE=$(cache_key "$OUTIL" "$SUJET" "$PWD")
-if VERDICT=$(cache_get "$CLE"); then
-  log_decision "$OUTIL" "$SUJET" "cache" "$VERDICT" "$REGEX_VERDICT" '{}' null 0
+if SCORES_CACHE=$(cache_get_scores "$CLE"); then
+  REPONSE_CACHE=$(jq -nc --argjson a "$SCORES_CACHE" '{answers:$a}' 2>/dev/null) \
+    || REPONSE_CACHE='{}'
+  if [ "$OUTIL" = "Bash" ]; then
+    VERDICT=$(decide_bash "$REPONSE_CACHE")
+  else
+    VERDICT=$(decide_file "$REPONSE_CACHE")
+  fi
+  # Plancher regex : un `allow` venu du cache ne l'emporte jamais sur un
+  # `block` du plancher. Vaut aussi pour des scores forgés.
+  [ "$REGEX_VERDICT" = "block" ] && VERDICT=block
+  log_decision "$OUTIL" "$SUJET" "cache" "$VERDICT" "$REGEX_VERDICT" \
+    "$SCORES_CACHE" null 0
   [ "$JEV_GUARD_MODE" = "shadow" ] && VERDICT=$REGEX_VERDICT
   emettre "$VERDICT" "verdict mémorisé"
 fi

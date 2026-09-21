@@ -36,8 +36,20 @@ assert_eq block "$(decide_bash "$(reponse 0.95 0.2 cwd 0.10 0.10)")" \
 # Règle 5
 assert_eq allow "$(decide_bash "$(reponse 0 0.1 cwd 0.99 0.99)")" "R5 cas nominal"
 
-# Champs manquants : ne doit pas planter, défauts sûrs
-assert_eq allow "$(decide_bash '{"answers":{}}')" "réponse vide → allow"
+# Champs manquants : ne doit pas planter, défauts sûrs (constat M1).
+# Un défaut de confiance à 1 n'est pas sûr : il neutralise la règle 4. À 0,
+# une confiance absente escalade en `ask`.
+assert_eq ask "$(decide_bash '{"answers":{}}')" "réponse vide → ask"
+assert_eq ask "$(decide_bash "$(jq -nc '{answers:{
+    secret_exposure:{noul:0},
+    destructiveness:{score:0.1},
+    blast_radius:{choice:"cwd",confidence:0.99}}}')")" \
+  "M1 : confidence de destructiveness absente → ask"
+assert_eq ask "$(decide_bash "$(jq -nc '{answers:{
+    secret_exposure:{noul:0},
+    destructiveness:{score:0.1,confidence:0.99},
+    blast_radius:{choice:"cwd"}}}')")" \
+  "M1 : confidence de blast_radius absente → ask"
 
 # Seuils surchargeables (spec R5)
 assert_eq block "$(JEV_T_SECRET=0.50 decide_bash "$(reponse 0.60 0 cwd 1 1)")" \

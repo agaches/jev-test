@@ -71,7 +71,7 @@ jev_build_file_payload() {
 }
 
 jev_query() {
-  local payload=$1 brut code corps timeout_s
+  local payload=$1 brut code corps timeout_s ms
   JEV_LAST_ERROR=""
 
   if [ -z "${TYPESAFE_API_KEY:-}" ]; then
@@ -79,7 +79,16 @@ jev_query() {
     return 1
   fi
 
-  timeout_s=$(awk -v ms="${JEV_GUARD_TIMEOUT_MS:-1500}" 'BEGIN{printf "%.3f", ms/1000}')
+  # Validation avant l'awk. `awk -v ms=abc 'BEGIN{print ms/1000}'` vaut 0, et
+  # `curl --max-time 0` signifie « aucun délai d'expiration » : une valeur mal
+  # saisie (`1,5`, `1500ms`, chaîne vide collée par un gestionnaire de secrets)
+  # ferait pendre chaque appel d'outil jusqu'au `timeout: 10` du hook, après
+  # quoi la commande passerait. Le chemin censé mener à `curl_echec` menait
+  # alors à une autorisation.
+  ms=${JEV_GUARD_TIMEOUT_MS:-1500}
+  case "$ms" in ''|*[!0-9]*) ms=1500 ;; esac
+  [ "$ms" -gt 0 ] 2>/dev/null || ms=1500
+  timeout_s=$(awk -v ms="$ms" 'BEGIN{printf "%.3f", ms/1000}')
 
   brut=$("${JEV_GUARD_CURL:-curl}" -sS -w '\n%{http_code}' \
       --max-time "$timeout_s" \

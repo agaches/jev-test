@@ -16,11 +16,12 @@ assert_eq "64" "${#cle}" "clé sha256 de 64 caractères"
 cle2=$(cache_key "Bash" "git status" "/autre")
 assert_eq "0" "$([ "$cle" != "$cle2" ]; echo $?)" "le cwd change la clé"
 
-cache_get "$cle" >/dev/null
+cache_get_scores "$cle" >/dev/null
 assert_rc 1 $? "miss sur cache vide"
 
-cache_put "$cle" "allow" '{"destructiveness":0.1}'
-assert_eq "allow" "$(cache_get "$cle")" "hit après écriture"
+cache_put "$cle" "allow" '{"destructiveness":{"score":0.1}}'
+assert_eq '{"destructiveness":{"score":0.1}}' "$(cache_get_scores "$cle")" \
+  "hit après écriture : ce sont les scores qui ressortent, pas le verdict"
 
 # Entrée expirée : ts_epoch il y a 8 jours
 vieux=$(cache_key "Bash" "vieille commande" "/projet")
@@ -28,8 +29,15 @@ mkdir -p "$JEV_GUARD_CACHE_DIR"
 jq -nc --argjson ts "$(( $(date +%s) - 8*24*3600 ))" \
   '{verdict:"allow",scores:{},ts_epoch:$ts}' \
   > "$JEV_GUARD_CACHE_DIR/$vieux.json"
-cache_get "$vieux" >/dev/null
+cache_get_scores "$vieux" >/dev/null
 assert_rc 1 $? "miss sur entrée expirée"
+
+# ts_epoch non numérique : miss, jamais une erreur arithmétique silencieuse
+tordu=$(cache_key "Bash" "horodatage tordu" "/projet")
+jq -nc '{verdict:"allow",scores:{},ts_epoch:"bientot"}' \
+  > "$JEV_GUARD_CACHE_DIR/$tordu.json"
+cache_get_scores "$tordu" >/dev/null 2>&1
+assert_rc 1 $? "miss sur ts_epoch non numérique"
 assert_eq "0" "$([ ! -f "$JEV_GUARD_CACHE_DIR/$vieux.json" ]; echo $?)" \
   "entrée expirée supprimée"
 
