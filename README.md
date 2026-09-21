@@ -23,6 +23,11 @@ lieu d'en ajouter un second. Chaque exécution laisse une sauvegarde horodatée
 de `settings.json` à côté de celui-ci, et n'écrase jamais une sauvegarde
 existante.
 
+Pour n'essayer jev-guard que sur **un seul projet**, sans toucher à la
+configuration globale, voir `docs/INSTALLATION.md`. Attention : les réglages de
+projet s'ajoutent aux globaux au lieu de les remplacer, donc les deux hooks
+historiques continuent de tourner. Le document détaille ce que cela change.
+
 ## Ce qui change dès le mode ombre
 
 Le mode ombre neutralise Jev, pas la couche locale. Celle-ci est un **plancher**

@@ -30,4 +30,26 @@ assert_eq block "$(fallback_verdict Bash 'git show a1b2c3d4e5f6a7b8c9d0e1f2a3b4c
 assert_eq block "$(fallback_verdict Bash 'curl "https://ex.com/d?token=public"')" \
   "faux positif token= conservé en mode dégradé"
 
+# --- Affectation sans valeur littérale (A1) ---
+# Un mot-clé de secret suivi de rien, d'une variable ou d'une chaîne vide ne
+# contient aucun secret. Le bloquer coupait toute commande nommant
+# TYPESAFE_API_KEY, y compris celles qui servent à administrer jev-guard.
+# Le mot-clé suivi d'une VALEUR reste bloqué, quoté ou non.
+assert_eq allow "$(fallback_verdict Bash 'TYPESAFE_API_KEY= ./hooks/jev-guard.sh')" \
+  "valeur vide : aucun secret à protéger"
+assert_eq allow "$(fallback_verdict Bash 'export TYPESAFE_API_KEY=$CLE_DU_COFFRE')" \
+  "valeur fournie par une variable"
+assert_eq allow "$(fallback_verdict Bash 'export TYPESAFE_API_KEY="$CLE_DU_COFFRE"')" \
+  "valeur fournie par une variable, entre guillemets"
+assert_eq allow "$(fallback_verdict Bash 'grep -n TYPESAFE_API_KEY= ~/.zshrc')" \
+  "mot-clé suivi d'une espace"
+assert_eq block "$(fallback_verdict Bash 'export TYPESAFE_API_KEY=54987654168476541')" \
+  "valeur littérale : toujours bloqué"
+assert_eq block "$(fallback_verdict Bash 'export TYPESAFE_API_KEY="54987654168476541"')" \
+  "valeur littérale entre guillemets : toujours bloqué"
+assert_eq block "$(fallback_verdict Bash "export apikey='abc123'")" \
+  "valeur littérale entre apostrophes : toujours bloqué"
+assert_eq block "$(fallback_verdict Bash 'aws configure set aws_access_key_id AKIA0000')" \
+  "fragment de nom sans affectation : toujours bloqué"
+
 finish

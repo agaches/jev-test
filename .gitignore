@@ -2,3 +2,4 @@
 .jev-guard-cache/
 tests/tmp/
 .superpowers/
+.claude/settings.local.json
