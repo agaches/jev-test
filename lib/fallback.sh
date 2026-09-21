@@ -22,10 +22,23 @@ _FB_DANGEREUX=(
   'DROP DATABASE' 'DROP TABLE' '--no-preserve-root'
 )
 
-_FB_SECRETS=(
-  'password=' 'secret=' 'api_key=' 'apikey=' 'token='
-  'aws_access_key' 'aws_secret' 'private_key'
-)
+# Mots-clés d'affectation. Ils ne bloquent QUE suivis d'une valeur littérale :
+# `api_key=abc` et `api_key="abc"` restent bloqués, `token=public` dans une URL
+# aussi. En revanche `TYPESAFE_API_KEY=` seul, `=$CLE` et `="$CLE"` passent.
+#
+# Ce n'est pas un relâchement pour faire taire un faux positif : ces trois
+# formes ne contiennent aucune valeur de secret, donc rien à protéger. La règle
+# d'origine coupait en mode ombre toute commande nommant TYPESAFE_API_KEY, le
+# nom que jev-guard impose lui-même à sa propre clé, y compris les commandes
+# qui servent à l'administrer.
+#
+# La première classe de caractères saute un guillemet ou une apostrophe
+# ouvrante ; la seconde exige un vrai caractère de valeur derrière. `$` en est
+# exclu : une valeur venue d'une variable n'est pas un secret en clair.
+_FB_SECRETS_AFFECT='(password|secret|api_key|apikey|token)=["'\'']?[^[:space:]$"'\'';|&]'
+
+# Fragments de nom dangereux à eux seuls, sans affectation.
+_FB_SECRETS_NOM=( 'aws_access_key' 'aws_secret' 'private_key' )
 
 _FB_FICHIERS=(
   '.env' '.env.local' '.env.production' '.env.development'
@@ -47,7 +60,10 @@ fallback_verdict() {
     if grep -qE 'npm publish|pnpm publish|yarn publish' <<<"$sujet"; then
       printf block; return
     fi
-    for motif in "${_FB_SECRETS[@]}"; do
+    if grep -qiE -- "$_FB_SECRETS_AFFECT" <<<"$sujet"; then
+      printf block; return
+    fi
+    for motif in "${_FB_SECRETS_NOM[@]}"; do
       grep -qi -- "$motif" <<<"$sujet" && { printf block; return; }
     done
     if grep -qE '(sk-[a-zA-Z0-9]{20,}|pk_[a-zA-Z0-9]{20,}|[a-f0-9]{32,})' <<<"$sujet"; then
