@@ -268,6 +268,44 @@ assert_eq "2" "$(lancer "$E_SANS_SUJET")" \
 export PATH="$PATH_SAUVE"
 export JEV_GUARD_CURL="$ROOT/tests/stubs/curl-ok"
 
+# --- Le plancher n'est pas évaluable sans grep ---
+# Cinq des six règles de fallback_verdict passent par grep. Sans lui, elles
+# échouent en 127, la fonction tombe sur son `printf allow` final, et un
+# force-push sur main comme une publication de paquet ressortaient en rc=0 avec
+# un simple « grep: command not found » sur stderr. La dépendance préexistait ;
+# c'est le mode dégradé sans jq qui la rend portante, sa prémisse étant
+# justement un PATH cassé.
+#
+# Ce répertoire d'appoint ne symlinke DÉLIBÉRÉMENT pas grep. Il ne symlinke pas
+# jq non plus : on éprouve le chemin dégradé, celui où le plancher est seul.
+BIN_SANS_GREP="$tmp/bin-sans-grep"
+mkdir -p "$BIN_SANS_GREP"
+for outil in bash cat tr sed basename dirname; do
+  chemin=$(command -v "$outil") && ln -sf "$chemin" "$BIN_SANS_GREP/$outil"
+done
+
+# Motifs assemblés à l'exécution : le hook de sécurité de la machine de
+# développement filtre ces chaînes sur ses propres commandes.
+CMD_FORCE="git push --$(printf force) origin main"
+CMD_PUBLIER="npm $(printf publish)"
+E_FORCE=$(entree Bash "$(jq -nc --arg c "$CMD_FORCE" '{command:$c}')")
+E_PUBLIER=$(entree Bash "$(jq -nc --arg c "$CMD_PUBLIER" '{command:$c}')")
+E_ANODIN2=$(entree Bash '{"command":"git status"}')
+
+export PATH="$BIN_SANS_GREP"
+assert_eq "1" "$(command -v grep >/dev/null 2>&1; echo $?)" \
+  "grep bien introuvable dans le PATH du test"
+
+assert_eq "2" "$(lancer "$E_FORCE")" \
+  "sans grep, un force-push sur main ne ressort pas autorisé"
+assert_eq "2" "$(lancer "$E_PUBLIER")" \
+  "sans grep, une publication de paquet ne ressort pas autorisée"
+# Fail-closed assumé : le plancher étant inévaluable, même l'anodin est refusé.
+assert_eq "2" "$(lancer "$E_ANODIN2")" \
+  "sans grep, le hook refuse plutôt que de juger à l'aveugle"
+
+export PATH="$PATH_SAUVE"
+
 # MODE OMBRE : Jev n'a jamais le dernier mot
 export JEV_GUARD_MODE=shadow
 rc=$(lancer "$(entree Bash '{"command":"git show a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0"}')")

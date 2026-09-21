@@ -193,6 +193,12 @@ confinement de chemin, expressions régulières — et bloque en code 2 ce que c
 plancher bloque. Un verdict `ask` n'étant pas exprimable dans ce mode, il laisse
 passer. Rien n'est journalisé.
 
+Sans `grep`, en revanche, le hook **bloque tout** ce qui entre dans son
+périmètre, jq présent ou non. Cinq des six règles du plancher passent par
+`grep` : sans lui, elles ne s'évaluent pas et le plancher autoriserait ce qu'il
+est censé refuser. Un contrôle qui ne peut pas juger n'autorise pas. Rétablir
+`grep` dans le `PATH` lève le blocage.
+
 ## Tests
 
 ```bash

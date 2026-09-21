@@ -126,4 +126,31 @@ assert_eq "0" "$rc" "I5 : sous le seuil, le code de retour reste 0"
 assert_eq "1" "$(valeur 'Lignes illisibles rejetées')" \
   "I5 : le rejet est annoncé même sous le seuil"
 
+# --- Cas 6 : dernière ligne tronquée, sans saut de ligne final ---
+# C'est la troncature que produit une écriture interrompue, et le premier cas
+# que le garde-fou I5 nomme. `wc -l` compte des sauts de ligne : cette ligne-là
+# ne lui apparaissait pas, tandis que le `jq -R` en aval la lisait et la
+# rejetait. Le compte de rejets retombait à 0 et la décision tronquée
+# disparaissait en silence, rc=0, stderr vide.
+CIBLE="$tmp/tronque.jsonl"
+ligne Bash allow allow jev 100
+ligne Bash allow allow jev 200
+ligne Bash block block jev 150
+printf '{"ts":"t","tool":"Ba' >> "$CIBLE"      # ni JSON complet, ni \n final
+
+sortie=$(bash "$ROOT/tools/analyze-shadow-log.sh" "$CIBLE" 2>"$tmp/err6")
+rc=$?
+rapport=$sortie
+
+assert_eq "4" "$(valeur 'Lignes du journal')" \
+  "I5b : la ligne tronquée sans \\n final est comptée"
+assert_eq "1" "$(valeur 'Lignes illisibles rejetées')" \
+  "I5b : la ligne tronquée est signalée comme rejetée"
+assert_eq "3" "$(valeur 'Décisions exploitables')" \
+  "I5b : les trois lignes valides restent exploitées"
+assert_eq "2" "$rc" \
+  "I5b : le code de retour signale la perte (25 % > seuil)"
+assert_eq "1" "$(grep -c 'au-delà du seuil' "$tmp/err6")" \
+  "I5b : la cause est expliquée sur stderr"
+
 finish

@@ -30,6 +30,26 @@ JEV_GUARD_MODE=${JEV_GUARD_MODE:-shadow}
 # `"command": "…"` détournerait l'extraction vers une valeur qu'elle contrôle,
 # et ferait juger une chaîne anodine à la place de la vraie. Le séparateur
 # U+0001 ne peut pas apparaître dans un document JSON valide.
+# Le plancher local n'est pas évaluable sans `grep`.
+#
+# Cinq des six règles de `fallback_verdict` passent par `grep` : force-push,
+# publication de paquet, motifs de secrets, formats de clés, suppression
+# récursive. Sans lui, chacune échoue en 127, la fonction tombe sur son
+# `printf allow` final, et `git push --force origin main` comme `npm publish`
+# ressortent AUTORISÉS — le tout avec un simple `grep: command not found` sur
+# stderr. Seule la comparaison de sous-chaînes de `_FB_DANGEREUX` survit, en
+# bash pur.
+#
+# Un contrôle qui ne peut pas juger n'autorise pas : on bloque, comme pour une
+# extraction en échec. La garde vaut pour les DEUX chemins, pas seulement le
+# mode dégradé sans jq : en mode ombre — le mode par défaut — c'est
+# `fallback_verdict` qui rend le verdict, que jq soit présent ou non.
+_exiger_grep() {
+  command -v grep >/dev/null 2>&1 && return 0
+  printf 'BLOQUÉ par jev-guard : grep introuvable, plancher local inévaluable.\n' >&2
+  exit 2
+}
+
 _JEV_SEP=$'\001'
 _sans_jq_chaine() {
   local entree=$1 champ=$2 reste valeur='' c i n
@@ -74,6 +94,9 @@ if ! command -v jq >/dev/null 2>&1; then
     *)          exit 0 ;;   # outil hors périmètre
   esac
 
+  # L'outil est dans le périmètre : le plancher doit pouvoir être évalué.
+  _exiger_grep
+
   _SUJET=$(_sans_jq_chaine "$_ENTREE" "$_CHAMP") || {
     printf 'BLOQUÉ par jev-guard : sujet illisible sans jq (%s).\n' "$_OUTIL" >&2
     exit 2; }
@@ -110,6 +133,10 @@ case "$OUTIL" in
   *)           exit 0 ;;
 esac
 [ -n "$SUJET" ] || exit 0
+
+# Même exigence chemin nominal : `REGEX_VERDICT` est calculé juste en dessous,
+# et c'est lui qui décide en mode ombre.
+_exiger_grep
 
 # Horloge en millisecondes. EPOCHREALTIME (bash 5) quand elle existe, repli
 # sur une résolution à la seconde sinon.

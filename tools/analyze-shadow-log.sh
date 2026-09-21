@@ -12,7 +12,13 @@ SEUIL_REJET_PCT=${JEV_ANALYSE_SEUIL_REJET_PCT:-5}
 JOURNAL=${1:-${JEV_GUARD_LOG:-$HOME/.claude/logs/jev-guard.jsonl}}
 [ -f "$JOURNAL" ] || { printf 'Journal introuvable : %s\n' "$JOURNAL" >&2; exit 1; }
 
-lignes_brutes=$(wc -l < "$JOURNAL" | tr -d ' ')
+# `wc -l` compte des SAUTS DE LIGNE, pas des lignes : une dernière ligne
+# tronquée, sans `\n` final, n'y figure pas. Le `jq -R` en aval, lui, la lit et
+# la rejette — `rejetees` retombait donc à 0 et la décision tronquée
+# disparaissait sans que rien ne le signale. C'est exactement la troncature que
+# ce garde-fou vise en premier, et celle que produit une écriture interrompue.
+# `awk` compte des enregistrements : la ligne partielle en est un.
+lignes_brutes=$(awk 'END{print NR}' "$JOURNAL")
 
 # Une seule ligne non-JSON — troncature, édition manuelle, écriture concurrente
 # — faisait échouer les huit `jq -s` d'un coup : quatre `[: : integer expected`
