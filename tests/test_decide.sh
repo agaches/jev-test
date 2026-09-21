@@ -27,11 +27,43 @@ assert_eq ask   "$(decide_bash "$(reponse 0 2.6 repo 1 1)")"          "R2 porté
 assert_eq ask   "$(decide_bash "$(reponse 0 1.5 cwd 1 1)")" "R3 au seuil"
 assert_eq allow "$(decide_bash "$(reponse 0 1.4 cwd 1 1)")" "R3 sous le seuil"
 
-# Règle 4 : porte de confiance (ne peut qu'escalader allow → ask)
+# Règle 4 : porte de confiance (ne peut qu'escalader allow → ask).
+# Depuis le calibrage sur appels réels, elle ne teste QUE la confiance sur la
+# destructivité : sous 1.5 de score, la portée n'intervient dans aucune règle.
 assert_eq ask   "$(decide_bash "$(reponse 0 0.2 cwd 0.55 1)")" "R4 confiance destructiveness basse"
-assert_eq ask   "$(decide_bash "$(reponse 0 0.2 cwd 1 0.55)")" "R4 confiance blast basse"
+assert_eq allow "$(decide_bash "$(reponse 0 0.2 cwd 1 0.55)")" \
+  "R4 confiance blast basse n'interrompt plus"
 assert_eq block "$(decide_bash "$(reponse 0.95 0.2 cwd 0.10 0.10)")" \
   "R4 n'annule jamais un blocage"
+
+# --- Calibrage de la porte de confiance (mesuré sur 44 appels réels) ---
+
+# 1. Le cas qui motive le correctif : une lecture inoffensive dont le modèle
+# ignore la portée. Relevé sur `git branch -a`, `git stash list`, `git status`.
+assert_eq allow "$(decide_bash "$(reponse 0 0.0 cwd 1.0 0.3)")" \
+  "calibrage : score nul et portée incertaine → allow"
+
+# 2. La porte reste fermée là où elle porte : une confiance faible sur la
+# destructivité rend le score lui-même douteux.
+assert_eq ask "$(decide_bash "$(reponse 0 0.5 cwd 0.3 1.0)")" \
+  "calibrage : confiance destructivité faible → ask"
+
+# 3. La règle 3 garde la priorité : c'est elle qui tranche à 2.0, pas la règle 4.
+assert_eq ask "$(decide_bash "$(reponse 0 2.0 cwd 0.3 0.3)")" \
+  "calibrage : règle 3 prioritaire sur la règle 4"
+
+# 4. La règle 2 n'est pas affectée par le calibrage.
+assert_eq block "$(decide_bash "$(reponse 0 3.0 machine 0.3 0.3)")" \
+  "calibrage : règle 2 intacte malgré deux confiances basses"
+
+# 5. La confiance de portée reste extraite et validée en type, même si elle
+# n'est plus seuillée. Un type aberrant doit continuer de faire escalader.
+# Ce test verrouille le choix de NE PAS retirer le champ de l'extraction jq.
+assert_eq ask "$(decide_bash "$(jq -nc '{answers:{
+    secret_exposure:{noul:0},
+    destructiveness:{score:0.1,confidence:0.99},
+    blast_radius:{choice:"cwd",confidence:"elevee"}}}')")" \
+  "calibrage : confiance de portée non numérique → ask par l'extraction stricte"
 
 # Règle 5
 assert_eq allow "$(decide_bash "$(reponse 0 0.1 cwd 0.99 0.99)")" "R5 cas nominal"
@@ -45,11 +77,16 @@ assert_eq ask "$(decide_bash "$(jq -nc '{answers:{
     destructiveness:{score:0.1},
     blast_radius:{choice:"cwd",confidence:0.99}}}')")" \
   "M1 : confidence de destructiveness absente → ask"
-assert_eq ask "$(decide_bash "$(jq -nc '{answers:{
+# En revanche, une `blast_radius.confidence` ABSENTE ne fait plus escalader :
+# depuis le calibrage, ce champ n'est plus seuillé du tout. Le défaut à 0 de M1
+# continue de s'y appliquer, il n'a simplement plus d'effet sur le verdict —
+# ce qui est cohérent, puisque sous 1.5 de score la portée ne porte aucune
+# décision. Le cœur de M1, lui, tient : voir l'assertion précédente.
+assert_eq allow "$(decide_bash "$(jq -nc '{answers:{
     secret_exposure:{noul:0},
     destructiveness:{score:0.1,confidence:0.99},
     blast_radius:{choice:"cwd"}}}')")" \
-  "M1 : confidence de blast_radius absente → ask"
+  "M1 + calibrage : confidence de blast_radius absente → allow"
 
 # Seuils surchargeables (spec R5)
 assert_eq block "$(JEV_T_SECRET=0.50 decide_bash "$(reponse 0.60 0 cwd 1 1)")" \

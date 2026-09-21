@@ -155,6 +155,27 @@ sont exclus.
 Le script annonce le nombre de lignes illisibles rencontrées et sort en 2
 au-delà de `JEV_ANALYSE_SEUIL_REJET_PCT`.
 
+### Ce que 44 appels réels ont déjà montré
+
+Mesures relevées contre le modèle `jev-1.13.0`, hors dépôt, avant déploiement.
+Elles ne dispensent pas de la phase A ; elles en fixent le point de départ.
+
+- **Contrat de réponse vérifié** : les cinq champs lus par `lib/decide.sh` sont
+  présents et du type attendu. `secret_exposure.confidence` n'existe pas dans
+  la réponse ; `decide.sh` ne le lit pas.
+- **Latence**, sur 14 appels : médiane 628 ms, p95 690 ms, maximum 954 ms. Le
+  critère 4 (`p95 < 800 ms`) passe, et le maximum observé garde 546 ms de marge
+  sur le défaut `JEV_GUARD_TIMEOUT_MS=1500`.
+- **Porte de confiance calibrée sur ces appels**, pas sur une hypothèse. Dans sa
+  version d'origine, elle interrompait 15 à 30 % du trafic ordinaire sur des
+  commandes sans effet, par une confiance faible sur la portée. Elle ne seuille
+  plus que la confiance sur la destructivité ; voir le commentaire de la règle 4
+  dans `lib/decide.sh`.
+- **Le verdict n'est pas déterministe au voisinage d'un seuil** : la même
+  commande peut donner `ask` puis `allow` d'un appel à l'autre, et le cache fige
+  le premier obtenu pour la durée du TTL. À garder en tête en relisant les
+  désaccords du critère 2.
+
 Une fois tous remplis et les désaccords relus, passer en mode actif :
 
 ```bash
