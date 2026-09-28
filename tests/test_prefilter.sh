@@ -23,6 +23,45 @@ do
   assert_rc 0 $? "détecte: ${secret:0:40}"
 done
 
+# --- Formats Scaleway et TypeSafe ---
+# Valeurs à entropie nulle, assemblées à l'exécution pour ne pas déclencher le
+# hook gitleaks du dépôt.
+SCW_AK="SCW$(printf '0%.0s' {1..17})"
+UUID0='00000000-0000-0000-0000-000000000000'
+TS_KEY="apikey_$(printf '0%.0s' {1..40})"
+for secret in \
+  "export SCW_ACCESS_KEY=$SCW_AK" \
+  "scw init secret-key=$UUID0" \
+  "export SCW_SECRET_KEY=\"$UUID0\"" \
+  "curl -H 'X-Auth-Token: $UUID0' https://api.scaleway.com/" \
+  "export TYPESAFE_API_KEY=$TS_KEY"
+do
+  prefilter_match "$secret" >/dev/null
+  assert_rc 0 $? "détecte: ${secret:0:40}"
+done
+
+# Un UUID nu (identifiant de ressource) ne déclenche pas.
+for anodin in \
+  "scw k8s cluster get $UUID0" \
+  "scw iam api-key delete $UUID0" \
+  'export SCW_SECRET_KEY="$CLE"'
+do
+  prefilter_match "$anodin" >/dev/null
+  assert_rc 1 $? "laisse passer: ${anodin:0:40}"
+done
+
+# Valeur exacte d'une variable secrète : seul le NOM sort, jamais la valeur.
+# Pas de sous-shell : les compteurs d'assert.sh y seraient perdus.
+export SCW_SECRET_KEY='11111111-2222-3333-4444-555555555555'
+motif=$(prefilter_match 'scw iam application list 11111111-2222-3333-4444-555555555555')
+assert_eq 'env:SCW_SECRET_KEY' "$motif" "détecte la valeur exacte, sort le nom"
+prefilter_match 'echo $SCW_SECRET_KEY' >/dev/null
+assert_rc 1 $? "laisse passer le nom de la variable"
+SCW_SECRET_KEY=court
+prefilter_match 'echo court' >/dev/null
+assert_rc 1 $? "ignore une valeur de moins de 8 caractères"
+unset SCW_SECRET_KEY
+
 # --- Anodins : ne doivent PAS déclencher (faux positifs actuels) ---
 for anodin in \
   'git show a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0' \
