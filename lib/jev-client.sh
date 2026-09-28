@@ -88,7 +88,8 @@ jev_query() {
   ms=${JEV_GUARD_TIMEOUT_MS:-1500}
   case "$ms" in ''|*[!0-9]*) ms=1500 ;; esac
   [ "$ms" -gt 0 ] 2>/dev/null || ms=1500
-  timeout_s=$(awk -v ms="$ms" 'BEGIN{printf "%.3f", ms/1000}')
+  # LC_ALL=C : sous une locale à virgule décimale (fr_FR), awk écrirait `1,500`.
+  timeout_s=$(LC_ALL=C awk -v ms="$ms" 'BEGIN{printf "%.3f", ms/1000}')
 
   brut=$("${JEV_GUARD_CURL:-curl}" -sS -w '\n%{http_code}' \
       --max-time "$timeout_s" \
