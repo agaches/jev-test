@@ -133,6 +133,7 @@ s'applique immédiatement, y compris aux entrées de cache déjà écrites.
 | `JEV_GUARD_MODE` | `shadow` | `shadow` : Jev observé, regex décisionnaires. `active` : Jev décide |
 | `JEV_GUARD_DISABLE` | vide | non vide : Jev n'est jamais appelé, les étages locaux restent actifs |
 | `JEV_GUARD_LOG` | `~/.claude/logs/jev-guard.jsonl` | fichier de journal |
+| `JEV_GUARD_SECRET_VARS` | `SCW_SECRET_KEY SCW_ACCESS_KEY TYPESAFE_API_KEY` | variables d'environnement dont la valeur exacte bloque une commande (pré-filtre) ; séparées par des espaces |
 | `CLAUDE_PROJECT_DIR` | `$PWD` | zone d'écriture autorisée principale |
 | `ALLOWED_PATHS` | vide | zones d'écriture supplémentaires, séparées par `:` |
 
